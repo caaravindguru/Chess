@@ -14,6 +14,35 @@ class NavButton(QPushButton):
             QPushButton:checked { background-color: #3a3a3a; border-left: 4px solid #7fa650; }
         """)
 
+class BotSelectionDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("New Game"); self.setFixedWidth(450)
+        layout = QVBoxLayout(self)
+
+        layout.addWidget(QLabel("Select Bot:"))
+        self.bot_combo = QComboBox()
+        from engine import BOT_PROFILES
+        # Add emojis to bots
+        self.emojis = ["👶", "🎓", "☕", "🏠", "🧠", "🎯", "🏆", "📜", "👑", "💻"]
+        for i, (name, p) in enumerate(BOT_PROFILES.items()):
+            emoji = self.emojis[i] if i < len(self.emojis) else "🤖"
+            self.bot_combo.addItem(f"{emoji} {name} ({p['elo']} ELO)", name)
+        layout.addWidget(self.bot_combo)
+
+        self.lbl_desc = QLabel(BOT_PROFILES["Rookie"]["desc"])
+        self.lbl_desc.setStyleSheet("color: #888; font-style: italic; margin-bottom: 10px;")
+        layout.addWidget(self.lbl_desc)
+        self.bot_combo.currentIndexChanged.connect(self.update_desc)
+
+        layout.addSpacing(10); layout.addWidget(QLabel("Time Control:"))
+        self.time_combo = QComboBox(); self.time_combo.addItems(["Unlimited", "1+0", "3+2", "5+0", "10+0", "15+10"]); layout.addWidget(self.time_combo)
+        layout.addSpacing(10); layout.addWidget(QLabel("Your Color:"))
+        color_group = QHBoxLayout(); self.btn_white = QRadioButton("White"); self.btn_white.setChecked(True); self.btn_black = QRadioButton("Black"); self.btn_random = QRadioButton("Random")
+        for b in [self.btn_white, self.btn_black, self.btn_random]: color_group.addWidget(b)
+        layout.addLayout(color_group); layout.addSpacing(20)
+        btn_start = QPushButton("Start Game"); btn_start.setStyleSheet("background-color: #7fa650; color: white; padding: 10px; font-weight: bold;"); btn_start.clicked.connect(self.accept); layout.addWidget(btn_start)
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -88,9 +117,14 @@ class MainWindow(QMainWindow):
         v_lbl = QLabel(value); v_lbl.setFont(QFont("Outfit", 20, QFont.Bold)); v_lbl.setStyleSheet("color: #e8e8e8;")
         layout.addWidget(t_lbl); layout.addWidget(v_lbl); card.value_label = v_lbl; return card
 
-    def update_stats_display(self, games, wins, accuracy, puzzles):
+    def update_desc(self, idx):
+        from engine import BOT_PROFILES
+        name = self.bot_combo.itemData(idx)
+        self.lbl_desc.setText(BOT_PROFILES[name]["desc"])
+
+    def update_stats_display(self, games, wins, accuracy, puzzles, streak=0):
         self.card_games.value_label.setText(str(games)); self.card_wins.value_label.setText(str(wins)); self.card_accuracy.value_label.setText(f"{accuracy}%"); self.card_puzzles.value_label.setText(str(puzzles))
-        self.mini_stats.setText(f"Games: {games} | Wins: {wins}\nAcc: {accuracy}%")
+        self.mini_stats.setText(f"Games: {games} | Wins: {wins}\nStreak: {streak} | Acc: {accuracy}%")
 
     def create_play_page(self):
         from board_widget import ChessBoardWidget, EvalBarWidget
@@ -103,8 +137,9 @@ class MainWindow(QMainWindow):
         self.move_list = QLabel("Moves will appear here..."); self.move_list.setWordWrap(True); self.move_list.setStyleSheet("color: #e8e8e8; font-family: monospace;"); info_layout.addWidget(self.move_list); info_layout.addStretch(); sidebar.addWidget(info_card, 1)
         self.btn_new_game = QPushButton("New Game"); self.btn_new_game.setStyleSheet("background-color: #7fa650; color: white; padding: 10px; font-weight: bold;")
         self.btn_hint = QPushButton("Hint"); self.btn_hint.setStyleSheet("background-color: #3a3a3a; color: white; padding: 10px;")
+        self.btn_draw = QPushButton("Offer Draw"); self.btn_draw.setStyleSheet("background-color: #3a3a3a; color: white; padding: 10px;")
         self.btn_resign = QPushButton("Resign"); self.btn_resign.setStyleSheet("background-color: #e74c3c; color: white; padding: 10px;")
-        for b in [self.btn_new_game, self.btn_hint, self.btn_resign]: sidebar.addWidget(b)
+        for b in [self.btn_new_game, self.btn_hint, self.btn_draw, self.btn_resign]: sidebar.addWidget(b)
         layout.addWidget(sidebar_frame); return page
 
     def create_player_bar(self, name, avatar):

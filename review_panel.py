@@ -33,22 +33,27 @@ class ReviewPanel(QWidget):
         left_layout = QVBoxLayout(); self.board_widget = ChessBoardWidget(); left_layout.addWidget(self.board_widget); self.graph = EvalGraph(); left_layout.addWidget(self.graph); layout.addLayout(left_layout, 2)
         right_frame = QFrame(); right_frame.setFixedWidth(350); right_layout = QVBoxLayout(right_frame)
         self.info_card = QFrame(); self.info_card.setStyleSheet("background-color: #242424; border-radius: 5px; padding: 15px;"); self.info_layout = QVBoxLayout(self.info_card); self.lbl_move = QLabel("Select a move"); self.lbl_move.setFont(QFont("Outfit", 16, QFont.Bold)); self.lbl_move.setStyleSheet("color: #e8e8e8;"); self.info_layout.addWidget(self.lbl_move)
-        self.lbl_eval = QLabel(""); self.lbl_eval.setStyleSheet("color: #888888;"); self.info_layout.addWidget(self.lbl_eval); self.lbl_best = QLabel(""); self.lbl_best.setStyleSheet("color: #7fa650;"); self.info_layout.addWidget(self.lbl_best); right_layout.addWidget(self.info_card)
+        self.lbl_eval = QLabel(""); self.lbl_eval.setStyleSheet("color: #888888;"); self.info_layout.addWidget(self.lbl_eval); self.lbl_best = QLabel(""); self.lbl_best.setStyleSheet("color: #7fa650;"); self.info_layout.addWidget(self.lbl_best)
+        self.lbl_summary = QLabel(""); self.lbl_summary.setStyleSheet("color: #888; font-size: 10px;"); self.lbl_summary.setWordWrap(True); self.info_layout.addWidget(self.lbl_summary); right_layout.addWidget(self.info_card)
         self.move_list = QListWidget(); self.move_list.setStyleSheet("QListWidget { background-color: #242424; color: #e8e8e8; border: none; } QListWidget::item { padding: 5px; } QListWidget::item:selected { background-color: #3a3a3a; }"); self.move_list.currentRowChanged.connect(self.show_move); right_layout.addWidget(self.move_list); layout.addWidget(right_frame)
 
     def set_data(self, analyzed_moves):
         self.analyzed_moves = analyzed_moves; self.move_list.clear(); scores = []
+        counts = {"Blunder": 0, "Mistake": 0, "Inaccuracy": 0, "Best": 0, "Good": 0}
         for i, m in enumerate(analyzed_moves):
+            cls = m.get('classification', 'Good')
+            if cls in counts: counts[cls] += 1
             text = f"{i//2 + 1}. {m['san'] if m['color']=='white' else '... ' + m['san']}"
             if 'symbol' in m and m['symbol']: text += f" {m['symbol']} [{m['classification'].upper()}]"
             item = QListWidgetItem(text)
-            if m.get('classification') == 'Blunder': item.setForeground(QColor("#e74c3c"))
-            elif m.get('classification') == 'Mistake': item.setForeground(QColor("#e67e22"))
-            elif m.get('classification') == 'Inaccuracy': item.setForeground(QColor("#f4d03f"))
-            elif m.get('classification') == 'Best': item.setForeground(QColor("#7fa650"))
+            if cls == 'Blunder': item.setForeground(QColor("#e74c3c"))
+            elif cls == 'Mistake': item.setForeground(QColor("#e67e22"))
+            elif cls == 'Inaccuracy': item.setForeground(QColor("#f4d03f"))
+            elif cls == 'Best': item.setForeground(QColor("#7fa650"))
             self.move_list.addItem(item)
             score = m['eval_after']; scores.append(score if m['color'] == 'white' else -score)
-        self.graph.set_scores(scores)
+        sum_text = " | ".join([f"{k}: {v}" for k, v in counts.items() if v > 0])
+        self.lbl_summary.setText(sum_text); self.graph.set_scores(scores)
         if analyzed_moves: self.move_list.setCurrentRow(0)
 
     def show_move(self, idx):
