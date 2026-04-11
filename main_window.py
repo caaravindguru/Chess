@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QStackedWidget, QLabel, QFrame, QSizePolicy,
-                             QFileDialog, QCheckBox, QComboBox, QFormLayout)
+                             QFileDialog, QCheckBox, QComboBox, QFormLayout, QDialog,
+                             QRadioButton)
 from PyQt5.QtCore import Qt, pyqtSignal, QSize
 from PyQt5.QtGui import QFont, QIcon, QPalette, QColor
 

@@ -2,6 +2,7 @@ import chess
 import chess.engine
 import os
 import threading
+import math
 from PyQt5.QtCore import QThread, pyqtSignal
 
 class EngineManager:
@@ -21,7 +22,10 @@ class EngineManager:
     def set_path(self, path):
         self.stockfish_path = path
         if self.engine:
-            self.engine.quit()
+            try:
+                self.engine.quit()
+            except Exception:
+                pass
         self._load_engine()
 
     def is_loaded(self):
@@ -45,9 +49,22 @@ class EngineManager:
         except Exception:
             return None
 
+    def configure_bot(self, profile_name):
+        if not self.engine or profile_name not in BOT_PROFILES:
+            return
+        profile = BOT_PROFILES[profile_name]
+        self.engine.configure({
+            "UCI_LimitStrength": True,
+            "UCI_Elo": profile["elo"],
+            "Skill Level": profile["skill"]
+        })
+
     def quit(self):
         if self.engine:
-            self.engine.quit()
+            try:
+                self.engine.quit()
+            except Exception:
+                pass
 
 BOT_PROFILES = {
     "Rookie": {"elo": 800, "skill": 1, "depth": 3, "desc": "Frequent blunders"},
@@ -117,7 +134,7 @@ OPENINGS = [
     ("Italian Game: Two Knights Defense", "e4 e5 Nf3 Nc6 Bc4 Nf6"),
     ("Sicilian: Richter-Rauzer", "e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 d6 Bg5"),
     ("Sicilian: Sveshnikov", "e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 e5"),
-    ("Sicilian: Taimanov", "e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 e6"),
+    ("Sicilian: Taimanov", "e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nxd4 e6"),
     ("Sicilian: Smith-Morra Gambit", "e4 c5 d4 cxd4 c3"),
     ("French: Winawer Variation", "e4 e6 d4 d5 Nc3 Bb4"),
     ("French: Burn Variation", "e4 e6 d4 d5 Nc3 Nf6 Bg5 dxe4"),
@@ -173,9 +190,12 @@ def detect_opening(board):
     fen_key = " ".join(board.fen().split()[:4])
     return _opening_index.get(fen_key)
 
+def win_prob(cp):
+    return 1.0 / (1.0 + math.exp(-cp / 350.0))
+
 class AnalysisWorker(QThread):
-    progress = pyqtSignal(int, int) # current, total
-    finished = pyqtSignal(list) # list of analyzed moves
+    progress = pyqtSignal(int, int)
+    finished = pyqtSignal(list)
 
     def __init__(self, engine_manager, game_moves, depth=12):
         super().__init__()
@@ -191,38 +211,35 @@ class AnalysisWorker(QThread):
             if self.is_cancelled: break
             board = chess.Board(move_data['fen_before'])
             move = chess.Move.from_uci(move_data['uci'])
-
-            # Get engine's best move and its score
             info = self.em.get_analysis(board, self.depth)
             best_move = info[0]['pv'][0] if info and 'pv' in info[0] else None
             best_score = info[0]['score'].relative.score(mate_score=10000) if info else 0
-
-            # Get actual played move's score
             board.push(move)
             info_played = self.em.get_analysis(board, self.depth)
             played_score = -info_played[0]['score'].relative.score(mate_score=10000) if info_played else best_score
-
             loss = best_score - played_score
-
-            # Classification
-            cls = "Good"
-            sym = ""
+            wp_best = win_prob(best_score)
+            wp_played = win_prob(played_score)
+            accuracy = 100 * (1 - (wp_best - wp_played))
+            cls = "Good"; sym = ""
             if loss > 150: cls, sym = "Blunder", "??"
             elif loss > 80: cls, sym = "Mistake", "?"
             elif loss > 30: cls, sym = "Inaccuracy", "?!"
             elif loss < 10: cls, sym = "Best", "!"
-
             move_data = dict(move_data)
-            move_data['eval_before'] = best_score
-            move_data['eval_after'] = played_score
-            move_data['best_uci'] = best_move.uci() if best_move else ""
-            move_data['classification'] = cls
-            move_data['symbol'] = sym
-            move_data['eval_loss'] = loss
-
+            move_data.update({'eval_before': best_score, 'eval_after': played_score, 'best_uci': best_move.uci() if best_move else "", 'classification': cls, 'symbol': sym, 'eval_loss': loss, 'accuracy': accuracy})
             analyzed_moves.append(move_data)
             self.progress.emit(i + 1, total)
         self.finished.emit(analyzed_moves)
 
     def cancel(self):
         self.is_cancelled = True
+
+class LiveAnalysisWorker(QThread):
+    analysis_ready = pyqtSignal(dict)
+    def __init__(self, engine_manager, board, depth=12):
+        super().__init__()
+        self.em = engine_manager; self.board = board.copy(); self.depth = depth
+    def run(self):
+        info = self.em.get_analysis(self.board, self.depth)
+        if info: self.analysis_ready.emit(info[0])
